@@ -1,7 +1,7 @@
 # alphafold-singularity
 alphafold setup with Singularity
 
-To bulild Singularity image
+To bulild Singularity image:
 singularity build alphfold.sif alphfold.def
 
 Modify run-alphafold.bash to use proper alphfold.sif and alphafold data folder
