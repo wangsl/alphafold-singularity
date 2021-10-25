@@ -1,0 +1,80 @@
+
+Bootstrap: docker
+From: nvidia/cuda:11.2.2-cudnn8-devel-ubuntu20.04
+
+%labels
+     ABOUTME aplhaFold setup
+
+%environment
+    export LC_ALL=C
+    export LANG=C.UTF-8
+
+%runscript
+    exec /bin/bash "$@"
+
+%post
+
+    apt-get -y update
+
+    export DEBIAN_FRONTEND=noninteractive
+    
+    apt-get install -y build-essential cmake aria2 git hmmer kalign tzdata wget
+    apt-get install -y strace lsof net-tools expect zip unzip
+    rm -rf /var/lib/apt/lists/*
+
+# Compile HHsuite from source
+
+git clone --branch v3.3.0 https://github.com/soedinglab/hh-suite.git /tmp/hh-suite && \
+mkdir /tmp/hh-suite/build && \
+cd /tmp/hh-suite/build && \
+cmake -DCMAKE_INSTALL_PREFIX=/opt/hhsuite .. \
+&& make -j && make install \
+&& ln -s /opt/hhsuite/bin/* /usr/bin \
+&& cd /tmp && rm -rf /tmp/hh-suite
+
+# conda environment
+cd /opt && \
+    wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
+    sh Miniconda3-latest-Linux-x86_64.sh -b -p /opt/miniconda3 && \
+    rm -rf Miniconda3-latest-Linux-x86_64.sh 
+
+. /opt/miniconda3/etc/profile.d/conda.sh
+export PATH=/opt/miniconda3/bin:$PATH
+conda update -n base conda --yes
+conda install pip --yes
+conda clean --all --yes
+
+cd /opt && \
+    git clone https://github.com/deepmind/alphafold.git && \
+    cd /opt/alphafold && \
+    wget -q -P /opt/alphafold/alphafold/common/ \
+	 https://git.scicore.unibas.ch/schwede/openstructure/-/raw/7102c63615b64735c4941278d92b554ec94415f8/modules/mol/alg/src/stereo_chemical_props.txt
+
+conda install -y -c conda-forge openmm=7.5.1 pdbfixer
+pip install -r /opt/alphafold/requirements.txt
+pip install mock
+
+cd /opt/miniconda3/lib/python3.9/site-packages
+patch -p0 < /opt/alphafold/docker/openmm.patch
+
+pip3 install --upgrade jax jaxlib==0.1.69+cuda111 -f https://storage.googleapis.com/jax-releases/jax_releases.html
+
+# To modify file: /opt/alphafold/alphafold/common/residue_constants.py
+# stereo_chemical_props_path = ('alphafold/common/stereo_chemical_props.txt')
+# stereo_chemical_props_path = ('/ext3/alphafold/alphafold/common/stereo_chemical_props.txt')
+sed -i.bak 's%alphafold/common/stereo_chemical_props.txt%/opt/alphafold/alphafold/common/stereo_chemical_props.txt%' /opt/alphafold/alphafold/common/residue_constants.py
+
+# setup a wrapper script
+
+cat<<EOF | tee /opt/env.sh
+source /opt/miniconda3/etc/profile.d/conda.sh
+export PATH=/opt/miniconda3/bin:\$PATH
+export PYTHONPATH=/opt/alphafold:\$PYTHONPATH
+EOF
+
+    apt-get clean
+
+
+
+
+ 
